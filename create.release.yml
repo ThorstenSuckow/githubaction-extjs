@@ -1,0 +1,57 @@
+name: Create Release for Sencha Ext JS project
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+      
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [16.x]
+    steps:
+
+      - name: Checking out project
+        uses: actions/checkout@v2
+
+      - name: Installing Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v2
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Installing dependencies via NPM
+        run: |
+          npm config set @sencha:registry https://npm.sencha.com/
+          # expects SENCHA_ACCESS_TOKEN secret with the auth token for the Sencha repository
+          npm config set //npm.sencha.com/:_authToken=${{ secrets.SENCHA_ACCESS_TOKEN }}
+          npm ci --save-dev
+      - name: Build Ext JS & zip build
+        run: |
+          npm run build
+          # Create zip assets if required
+          # see https://medium.com/@thorstensuckow/downloadable-assets-with-github-actions-e39b76371337
+          # change APP_NAME to the name of your project
+          cd ./build/production/APP_NAME/ && zip -r ../../../release.zip ./*
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release.zip
+          asset_name: build.${{ github.ref }}.zip
+          asset_content_type: application/zip
